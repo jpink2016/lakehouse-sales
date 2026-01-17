@@ -40,6 +40,10 @@ orders_out = cfg.paths["bronze_orders_daily"]
 items_out  = cfg.paths["bronze_order_items_daily"]
 meta_out   = f"{storage_root}/bronze/_generator_runs"
 
+print("env:", cfg.env)
+print("storage_root:", cfg.storage_root)
+print("process_date:", cfg.process_date)
+print("orders_out:", cfg.paths["bronze_orders_daily"])
 # Generator-only parameters (safe locally & in Databricks)
 def _get(name, default):
     try:
