@@ -22,7 +22,7 @@ try:
     dbutils.widgets.text("storage_root", "")
     dbutils.widgets.text("process_date", "")  # YYYY-MM-DD
     dbutils.widgets.text("new_orders", "200") # how many new orders to create today
-    dbutils.widgets.text("update_rate", "0.10")  # fraction of prior orders to update
+    dbutils.widgets.text("update_rate", "0")  # fraction of prior orders to update
     dbutils.widgets.text("late_rate", "0.03")    # fraction of rows that arrive late (older order_ts)
     dbutils.widgets.text("dup_rate", "0.02")     # fraction of duplicates to inject
 except Exception: 
