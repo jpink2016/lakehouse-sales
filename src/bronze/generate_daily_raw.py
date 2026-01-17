@@ -148,8 +148,9 @@ def try_read_recent_orders(root: str):
         # any other read issue: skip updates for now
         return None
 
-
-recent_orders_df = try_read_recent_orders(storage_root)
+recent_orders_df = None
+if update_rate > 0:
+    recent_orders_df = try_read_recent_orders(storage_root)
 
 update_rows = []
 if recent_orders_df is not None:
