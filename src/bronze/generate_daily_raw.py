@@ -1,6 +1,9 @@
 
 from pyspark.sql import SparkSession
 
+import sys
+print("ARGV:", sys.argv)
+
 spark = (
     SparkSession.builder
     .appName("daily-raw-generator")
