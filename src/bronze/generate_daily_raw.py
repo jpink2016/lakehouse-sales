@@ -133,8 +133,16 @@ for i in range(new_orders):
 # We'll try reading from silver/orders later in your pipeline; but for now we can read
 # previous bronze orders if present. If nothing exists yet, this just skips.
 
+def _path_exists(path: str) -> bool:
+    jvm = spark._jvm
+    conf = spark._jsc.hadoopConfiguration()
+    fs = jvm.org.apache.hadoop.fs.FileSystem.get(conf)
+    return fs.exists(jvm.org.apache.hadoop.fs.Path(path))
 def try_read_recent_orders(root: str):
     # reads all bronze/orders partitions if present; you can tighten to last N days later
+    # If nothing has ever been written, skip updates
+    if not _path_exists(f"{root}/bronze/orders"):
+        return None
     path_glob = f"{root}/bronze/orders/ingest_date=*/"
     try:
         return spark.read.json(path_glob).select("order_id").distinct()
