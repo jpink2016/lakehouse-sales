@@ -66,6 +66,9 @@ def load_config() -> Config:
     e_env  = os.getenv("ENV")
     e_root = os.getenv("STORAGE_ROOT")
     e_date = os.getenv("PROCESS_DATE")
+    print("DEBUG args.storage_root =", args.storage_root)
+    print("DEBUG w_root =", w_root)
+    print("DEBUG e_root =", e_root)
 
     env = (_first(args.env, w_env, e_env, "dev") or "dev").lower()
     storage_root = _first(args.storage_root, w_root, e_root)
