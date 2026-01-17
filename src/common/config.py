@@ -1,100 +1,84 @@
-
+# src/common/config.py
 from __future__ import annotations
 
 import os
+import argparse
 from dataclasses import dataclass
 from typing import Dict, Optional
 
+
 def _get_widget(name: str) -> Optional[str]:
-    """
-    Read a Databricks widget if running in Databricks; otherwise return None.
-    """
     try:
-        # dbutils is injected in Databricks notebooks/jobs
         return dbutils.widgets.get(name)  # type: ignore[name-defined]
     except Exception:
         return None
 
 
-def _get_param(name: str, default: Optional[str] = None) -> Optional[str]:
-    """
-    Priority: Databricks widget -> environment variable -> default.
-    """
-    v = _get_widget(name)
-    if v is not None and str(v).strip() != "":
-        return str(v).strip()
-
-    v = os.getenv(name.upper())
-    if v is not None and str(v).strip() != "":
-        return str(v).strip()
-
-    return default
+def _first(*vals: Optional[str]) -> Optional[str]:
+    for v in vals:
+        if v is not None and str(v).strip() != "":
+            return str(v).strip()
+    return None
 
 
 @dataclass(frozen=True)
 class Config:
-    env: str                 # "azure" or "aws" (or "dev")
-    storage_root: str        # s3://... OR abfss://...
-    process_date: str        # YYYY-MM-DD
-    paths: Dict[str, str]    # convenience paths
+    env: str
+    storage_root: str
+    process_date: str
+    paths: Dict[str, str]
 
 
 def build_paths(storage_root: str, process_date: str) -> Dict[str, str]:
     root = storage_root.rstrip("/")
 
-    # Landing folders (daily drops)
-    bronze_base = f"{root}/bronze"
-    silver_base = f"{root}/silver"
-    gold_base = f"{root}/gold"
+    bronze = f"{root}/bronze"
+    silver = f"{root}/silver"
+    gold   = f"{root}/gold"
 
     return {
-        # Base
-        "bronze_base": bronze_base,
-        "silver_base": silver_base,
-        "gold_base": gold_base,
+        "bronze_orders_daily": f"{bronze}/orders/ingest_date={process_date}",
+        "bronze_order_items_daily": f"{bronze}/order_items/ingest_date={process_date}",
 
-        # Daily landing folders (raw files)
-        "bronze_orders_daily": f"{bronze_base}/orders/ingest_date={process_date}",
-        "bronze_order_items_daily": f"{bronze_base}/order_items/ingest_date={process_date}",
+        "silver_orders": f"{silver}/orders",
+        "silver_order_items": f"{silver}/order_items",
 
-        # Delta table locations (you can switch these to UC tables later)
-        "silver_orders": f"{silver_base}/orders",
-        "silver_order_items": f"{silver_base}/order_items",
-        "silver_customers": f"{silver_base}/customers",
-        "silver_products": f"{silver_base}/products",
+        "gold_daily_revenue": f"{gold}/daily_revenue",
 
-        "gold_daily_revenue": f"{gold_base}/daily_revenue",
-        "gold_top_products_daily": f"{gold_base}/top_products_daily",
-        "gold_customer_ltv": f"{gold_base}/customer_ltv",
-
-        # Quality results
         "dq_results": f"{root}/quality/dq_results",
     }
 
 
 def load_config() -> Config:
-    """
-    Load config in both environments:
-      - Databricks Jobs/Notebooks via widgets
-      - Local runs via env vars (ENV, STORAGE_ROOT, PROCESS_DATE)
-    Required:
-      - storage_root
-      - process_date (YYYY-MM-DD)
-    """
-    env = (_get_param("env", "dev") or "dev").lower()
-    storage_root = _get_param("storage_root")
-    process_date = _get_param("process_date")
+    # 1️⃣ CLI args (Spark Python task)
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--env")
+    parser.add_argument("--storage_root")
+    parser.add_argument("--process_date")
+    args, _ = parser.parse_known_args()
+
+    # 2️⃣ Widgets (only if running as notebook)
+    w_env   = _get_widget("env")
+    w_root  = _get_widget("storage_root")
+    w_date  = _get_widget("process_date")
+
+    # 3️⃣ Environment variables (local / Docker)
+    e_env  = os.getenv("ENV")
+    e_root = os.getenv("STORAGE_ROOT")
+    e_date = os.getenv("PROCESS_DATE")
+
+    env = (_first(args.env, w_env, e_env, "dev") or "dev").lower()
+    storage_root = _first(args.storage_root, w_root, e_root)
+    process_date = _first(args.process_date, w_date, e_date)
 
     if not storage_root:
-        raise ValueError(
-            "Missing storage_root. Provide as Databricks widget 'storage_root' "
-            "or env var STORAGE_ROOT (e.g., s3://bucket/lake OR abfss://container@acct.dfs.core.windows.net/lake)."
-        )
+        raise ValueError("Missing storage_root (use --storage_root or STORAGE_ROOT).")
     if not process_date:
-        raise ValueError(
-            "Missing process_date. Provide as Databricks widget 'process_date' "
-            "or env var PROCESS_DATE (YYYY-MM-DD)."
-        )
+        raise ValueError("Missing process_date (use --process_date or PROCESS_DATE).")
 
-    paths = build_paths(storage_root, process_date)
-    return Config(env=env, storage_root=storage_root, process_date=process_date, paths=paths)
+    return Config(
+        env=env,
+        storage_root=storage_root,
+        process_date=process_date,
+        paths=build_paths(storage_root, process_date),
+    )
