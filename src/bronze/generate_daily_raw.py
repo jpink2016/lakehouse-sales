@@ -7,21 +7,16 @@ from src.common.config import load_config
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
-# -----------------------------
-# Widgets (job parameters)
-# -----------------------------
-try: 
-    dbutils.widgets.text('env','dev')
-    dbutils.widgets.text("storage_root", "")
-    dbutils.widgets.text("process_date", "")  # YYYY-MM-DD
-    dbutils.widgets.text("new_orders", "200") # how many new orders to create today
-    dbutils.widgets.text("update_rate", "0")  # fraction of prior orders to update
-    dbutils.widgets.text("late_rate", "0.03")    # fraction of rows that arrive late (older order_ts)
-    dbutils.widgets.text("dup_rate", "0.02")     # fraction of duplicates to inject
-except Exception: 
-    pass # local run
+import argparse
+from src.common.config import load_config
 
-cfg = load_config()
+p = argparse.ArgumentParser()
+p.add_argument("--env", required=True)
+p.add_argument("--storage_root", required=True)
+p.add_argument("--process_date", required=True)
+a = p.parse_args()
+
+cfg = load_config(env=a.env, storage_root=a.storage_root, process_date=a.process_date)
 storage_root = cfg.storage_root
 process_date = cfg.process_date
 orders_out = cfg.paths["bronze_orders_daily"]
