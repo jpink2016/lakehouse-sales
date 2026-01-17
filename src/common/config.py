@@ -11,10 +11,13 @@ class Config:
 
 def build_paths(storage_root: str, process_date: str) -> Dict[str, str]:
     root = storage_root.rstrip("/")
+    raw    = f"{root}/raw"
     bronze = f"{root}/bronze"
     silver = f"{root}/silver"
     gold   = f"{root}/gold"
     return {
+        "raw_orders_daily": f"{raw}/orders/ingest_date={process_date}",
+        "raw_order_items_daily": f"{raw}/order_items/ingest_date={process_date}",
         "bronze_orders_daily": f"{bronze}/orders/ingest_date={process_date}",
         "bronze_order_items_daily": f"{bronze}/order_items/ingest_date={process_date}",
         "silver_orders": f"{silver}/orders",

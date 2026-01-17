@@ -19,14 +19,14 @@ a = p.parse_args()
 cfg = load_config(env=a.env, storage_root=a.storage_root, process_date=a.process_date)
 storage_root = cfg.storage_root
 process_date = cfg.process_date
-orders_out = cfg.paths["bronze_orders_daily"]
-items_out  = cfg.paths["bronze_order_items_daily"]
-meta_out   = f"{storage_root}/bronze/_generator_runs"
+orders_out = cfg.paths["raw_orders_daily"]
+items_out  = cfg.paths["raw_order_items_daily"]
+meta_out   = f"{storage_root}/raw/_generator_runs"
 
 print("env:", cfg.env)
 print("storage_root:", cfg.storage_root)
 print("process_date:", cfg.process_date)
-print("orders_out:", cfg.paths["bronze_orders_daily"])
+print("orders_out:", cfg.paths["raw_orders_daily"])
 # Generator-only parameters (safe locally & in Databricks)
 def _get(name, default):
     try:
@@ -112,16 +112,16 @@ for i in range(new_orders):
 
 # -----------------------------
 # Optionally: generate "updates" to prior orders to simulate CDC
-# Strategy: read some recent order_ids from previous bronze partitions if they exist,
+# Strategy: read some recent order_ids from previous raw partitions if they exist,
 # then emit updated versions today (status changes / updated_ts bumps).
 # -----------------------------
 # We'll try reading from silver/orders later in your pipeline; but for now we can read
-# previous bronze orders if present. If nothing exists yet, this just skips.
+# previous raw orders if present. If nothing exists yet, this just skips.
 
 from pyspark.errors.exceptions.captured import AnalysisException
 
 def try_read_recent_orders(root: str):
-    path_glob = f"{root.rstrip('/')}/bronze/orders/ingest_date=*/"
+    path_glob = f"{root.rstrip('/')}/raw/orders/ingest_date=*/"
     try:
         return spark.read.json(path_glob).select("order_id").distinct()
     except AnalysisException as e:
@@ -152,7 +152,7 @@ if recent_orders_df is not None:
             customer_id = random.choice(customer_ids)  # could keep same; simplified
             # updated_ts today
             updated_ts = rand_time_in_day(process_date)
-            # keep original order_ts unknown here; set to today for bronze update event
+            # keep original order_ts unknown here; set to today for raw update event
             order_ts = rand_time_in_day(process_date)
 
             update_rows.append((oid, customer_id, order_ts, status, updated_ts))
@@ -207,7 +207,7 @@ items_df = spark.createDataFrame(items_rows, items_schema) \
     .withColumn("source_system", F.lit("synthetic_generator"))
 
 # -----------------------------
-# Write as raw JSON files into bronze landing folders
+# Write as raw JSON files into raw landing folders
 # (This mimics "file drops" you'd ingest later.)
 # -----------------------------
 (orders_df
