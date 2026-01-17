@@ -1,9 +1,6 @@
 
 from pyspark.sql import SparkSession
 
-import sys
-print("ARGV:", sys.argv)
-
 spark = (
     SparkSession.builder
     .appName("daily-raw-generator")
@@ -34,6 +31,7 @@ except Exception:
 from src.common.config import load_config
 
 cfg = load_config()
+print(cfg.env, cfg.storage_root, cfg.process_date)
 storage_root = cfg.storage_root
 process_date = cfg.process_date
 orders_out = cfg.paths["bronze_orders_daily"]
