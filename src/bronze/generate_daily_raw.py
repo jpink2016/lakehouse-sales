@@ -1,16 +1,21 @@
 
+from delta import configure_spark_with_delta_pip
 from pyspark.sql import SparkSession
 
-spark = (
+builder = (
     SparkSession.builder
     .appName("daily-raw-generator")
-    .getOrCreate()
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
 )
+
+spark = configure_spark_with_delta_pip(builder).getOrCreate()
+
 # Databricks notebook source
 from datetime import datetime, date
 import random
 import uuid
-
+from src.common.config import load_config
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
@@ -27,8 +32,6 @@ try:
     dbutils.widgets.text("dup_rate", "0.02")     # fraction of duplicates to inject
 except Exception: 
     pass # local run
-
-from src.common.config import load_config
 
 cfg = load_config()
 storage_root = cfg.storage_root
