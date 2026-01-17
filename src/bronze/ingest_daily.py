@@ -1,3 +1,4 @@
+# Databricks notebook source
 from pyspark.sql import SparkSession
 from src.common.config import load_config
 
@@ -22,3 +23,4 @@ def peek(df, name, n=10):
 
 df = spark.read.json(orders_out) 
 peek(df, "orders_out")
+print("test")
