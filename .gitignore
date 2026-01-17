@@ -1,3 +1,7 @@
+# Local data
+_local_lake/
+data/
+tmp/
 
 # macOS
 .DS_Store

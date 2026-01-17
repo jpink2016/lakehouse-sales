@@ -1,4 +1,11 @@
 
+from pyspark.sql import SparkSession
+
+spark = (
+    SparkSession.builder
+    .appName("daily-raw-generator")
+    .getOrCreate()
+)
 # Databricks notebook source
 from datetime import datetime, date
 import random
@@ -10,29 +17,42 @@ from pyspark.sql import types as T
 # -----------------------------
 # Widgets (job parameters)
 # -----------------------------
-dbutils.widgets.text("storage_root", "")
-dbutils.widgets.text("process_date", "")  # YYYY-MM-DD
-dbutils.widgets.text("new_orders", "200") # how many new orders to create today
-dbutils.widgets.text("update_rate", "0.10")  # fraction of prior orders to update
-dbutils.widgets.text("late_rate", "0.03")    # fraction of rows that arrive late (older order_ts)
-dbutils.widgets.text("dup_rate", "0.02")     # fraction of duplicates to inject
+try: 
+    dbutils.widgets.text('env','dev')
+    dbutils.widgets.text("storage_root", "")
+    dbutils.widgets.text("process_date", "")  # YYYY-MM-DD
+    dbutils.widgets.text("new_orders", "200") # how many new orders to create today
+    dbutils.widgets.text("update_rate", "0.10")  # fraction of prior orders to update
+    dbutils.widgets.text("late_rate", "0.03")    # fraction of rows that arrive late (older order_ts)
+    dbutils.widgets.text("dup_rate", "0.02")     # fraction of duplicates to inject
+except Exception: 
+    pass # local run
 
-storage_root = dbutils.widgets.get("storage_root").strip()
-process_date = dbutils.widgets.get("process_date").strip()
-new_orders = int(dbutils.widgets.get("new_orders"))
-update_rate = float(dbutils.widgets.get("update_rate"))
-late_rate = float(dbutils.widgets.get("late_rate"))
-dup_rate = float(dbutils.widgets.get("dup_rate"))
+from src.common.config import load_config
+
+cfg = load_config()
+storage_root = cfg.storage_root
+process_date = cfg.process_date
+orders_out = cfg.paths["bronze_orders_daily"]
+items_out  = cfg.paths["bronze_order_items_daily"]
+meta_out   = f"{storage_root}/bronze/_generator_runs"
+
+# Generator-only parameters (safe locally & in Databricks)
+def _get(name, default):
+    try:
+        return dbutils.widgets.get(name)  # type: ignore[name-defined]
+    except Exception:
+        return default
+
+new_orders  = int(_get("new_orders", 200))
+update_rate = float(_get("update_rate", 0.10))
+late_rate   = float(_get("late_rate", 0.03))
+dup_rate    = float(_get("dup_rate", 0.02))
 
 if not storage_root:
     raise ValueError("storage_root is required (s3://... or abfss://...)")
 if not process_date:
     raise ValueError("process_date is required (YYYY-MM-DD)")
-
-# Paths
-orders_out = f"{storage_root}/bronze/orders/ingest_date={process_date}"
-items_out  = f"{storage_root}/bronze/order_items/ingest_date={process_date}"
-meta_out   = f"{storage_root}/bronze/_generator_runs"
 
 run_id = str(uuid.uuid4())
 run_ts = datetime.utcnow().isoformat()

@@ -5,12 +5,6 @@ import os
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from common.config import load_config
-
-cfg = load_config()
-orders_out = cfg.paths["bronze_orders_daily"]
-items_out  = cfg.paths["bronze_order_items_daily"]
-
 def _get_widget(name: str) -> Optional[str]:
     """
     Read a Databricks widget if running in Databricks; otherwise return None.
