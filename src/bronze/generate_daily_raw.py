@@ -50,7 +50,7 @@ def _get(name, default):
         return default
 
 new_orders  = int(_get("new_orders", 200))
-update_rate = float(_get("update_rate", 0.10))
+update_rate = float(_get("update_rate", 0))
 late_rate   = float(_get("late_rate", 0.03))
 dup_rate    = float(_get("dup_rate", 0.02))
 
