@@ -18,8 +18,8 @@ def build_paths(storage_root: str, process_date: str) -> Dict[str, str]:
     return {
         "raw_orders_daily": f"{raw}/orders/ingest_date={process_date}",
         "raw_order_items_daily": f"{raw}/order_items/ingest_date={process_date}",
-        "bronze_orders_daily": f"{bronze}/orders/ingest_date={process_date}",
-        "bronze_order_items_daily": f"{bronze}/order_items/ingest_date={process_date}",
+        "bronze_orders": f"{bronze}/orders",
+        "bronze_order_items": f"{bronze}/order_items",
         "silver_orders": f"{silver}/orders",
         "silver_order_items": f"{silver}/order_items",
         "gold_daily_revenue": f"{gold}/daily_revenue",
