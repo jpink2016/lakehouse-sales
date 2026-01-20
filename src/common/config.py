@@ -9,12 +9,13 @@ class Config:
     process_date: str
     paths: Dict[str, str]
 
-def build_paths(storage_root: str, process_date: str) -> Dict[str, str]:
+def build_paths(storage_root: str,env: str, process_date: str) -> Dict[str, str]:
     root = storage_root.rstrip("/")
+    base = f"{root}/{env}"
     raw    = f"{root}/raw"
-    bronze = f"{root}/bronze"
-    silver = f"{root}/silver"
-    gold   = f"{root}/gold"
+    bronze = f"{base}/bronze"
+    silver = f"{base}/silver"
+    gold   = f"{base}/gold"
     return {
         "raw_orders_daily": f"{raw}/orders/ingest_date={process_date}",
         "raw_order_items_daily": f"{raw}/order_items/ingest_date={process_date}",
@@ -35,5 +36,5 @@ def load_config(*, env: str, storage_root: str, process_date: str) -> Config:
         env=env.lower(),
         storage_root=storage_root,
         process_date=process_date,
-        paths=build_paths(storage_root, process_date),
+        paths=build_paths(storage_root, env, process_date),
     )
