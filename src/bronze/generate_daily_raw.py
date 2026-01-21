@@ -1,12 +1,12 @@
 
 # Databricks notebook source
-from datetime import datetime, date
+from datetime import datetime, date,timedelta
 import random
 import uuid
 from src.common.config import load_config
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
-
+from pyspark.sql.window import Window
 import argparse
 from src.common.config import load_config
 
@@ -70,7 +70,7 @@ customer_ids = [f"C{str(i).zfill(5)}" for i in range(1, 2001)]  # 2k customers
 # -----------------------------
 def rand_time_in_day(date_str: str):
     # returns ISO timestamp string
-    hh = random.randint(0, 23)
+    hh = random.randint(0, 22)
     mm = random.randint(0, 59)
     ss = random.randint(0, 59)
     return f"{date_str} {hh:02d}:{mm:02d}:{ss:02d}"
@@ -96,10 +96,12 @@ for i in range(new_orders):
         dt = datetime.strptime(process_date, "%Y-%m-%d").date()
         older = dt.fromordinal(dt.toordinal() - days_back).isoformat()
         order_ts = rand_time_in_day(older)
+    
+    # convert string → datetime
+    order_dt = datetime.strptime(order_ts, "%Y-%m-%d %H:%M:%S")
+    updated_ts = order_dt + timedelta(seconds=random.randint(0, 600))  # 0–10 min
 
-    updated_ts = rand_time_in_day(process_date)
-
-    orders_rows.append((order_id, customer_id, order_ts, status, updated_ts))
+    orders_rows.append((order_id, customer_id, order_ts, status, updated_ts.isoformat(" ")))
 
     # items: 1–5 per order
     n_items = random.randint(1, 5)
@@ -119,45 +121,89 @@ for i in range(new_orders):
 # previous raw orders if present. If nothing exists yet, this just skips.
 
 from pyspark.errors.exceptions.captured import AnalysisException
-
-def try_read_recent_orders(root: str):
-    path_glob = f"{root.rstrip('/')}/raw/orders/ingest_date=*/"
+def lookback_paths(root: str, process_date: str, days_back_start=2, days_back_end=10):
+    # returns list like [ingest_date=n-1, n-2, n-3]
+    dt = datetime.strptime(process_date, "%Y-%m-%d").date()
+    dates = [(dt - timedelta(days=d)).isoformat() for d in range(days_back_start, days_back_end + 1)]
+    base = f"{root.rstrip('/')}/raw/orders"
+    return [f"{base}/ingest_date={d}/" for d in dates]
+    
+def try_read_recent_orders(root: str, process_date: str):
+    paths = lookback_paths(root, process_date, days_back_start=1, days_back_end=3)
     try:
-        return spark.read.json(path_glob).select("order_id").distinct()
+        df = (spark.read.json(paths)
+              .select("order_id", "customer_id", "order_ts", "updated_ts", "status")
+              .withColumn("order_ts", F.to_timestamp("order_ts"))
+              .withColumn("updated_ts", F.to_timestamp("updated_ts"))
+        )
+        # skip terminal states
+        df = df.filter(~F.col("status").isin("CANCELLED", "SHIPPED"))
+        return df
     except AnalysisException as e:
-        # first run: nothing exists yet
+        # if none of the lookback paths exist yet, treat as first run
         if "PATH_NOT_FOUND" in str(e) or "Path does not exist" in str(e):
             return None
         raise
     except Exception:
-        # any other read issue: skip updates for now
         return None
+    
+def next_status(status: str):
+    # terminal stays terminal
+    if status in ("SHIPPED", "CANCELLED"):
+        return status
+    statuses = ["CREATED", "PAID", "SHIPPED"]
+    if status not in statuses:
+        return "CREATED"
+    i = statuses.index(status)
+    return statuses[min(i + 1, len(statuses) - 1)]  # stop at SHIPPED
 
 recent_orders_df = None
 if update_rate > 0:
-    recent_orders_df = try_read_recent_orders(storage_root)
+    recent_orders_df = try_read_recent_orders(storage_root, process_date)
+    if recent_orders_df is not None:
+        w = Window.partitionBy("order_id").orderBy(F.col("updated_ts").desc_nulls_last(), F.col("order_ts").desc_nulls_last())
+        recent_orders_df = (recent_orders_df
+            .withColumn("_rn", F.row_number().over(w))
+            .filter("_rn = 1")
+            .drop("_rn")
+        )
 
 update_rows = []
 if recent_orders_df is not None:
-    # pick a sample to update
-    total_recent = recent_orders_df.count()
+    total_recent = recent_orders_df.select("order_id").distinct().count()
     if total_recent > 0:
         n_updates = int(total_recent * update_rate)
-        sampled = recent_orders_df.orderBy(F.rand()).limit(n_updates)
-        sampled_ids = [r["order_id"] for r in sampled.collect()]
 
-        for oid in sampled_ids:
-            # simulate status progression
-            status = random.choice(["PAID", "SHIPPED", "CANCELLED"])
-            customer_id = random.choice(customer_ids)  # could keep same; simplified
-            # updated_ts today
-            updated_ts = rand_time_in_day(process_date)
-            # keep original order_ts unknown here; set to today for raw update event
-            order_ts = rand_time_in_day(process_date)
+        sampled = (recent_orders_df
+                   .orderBy(F.rand())
+                   .limit(n_updates)
+                   .collect())
 
-            update_rows.append((oid, customer_id, order_ts, status, updated_ts))
+        for r in sampled:
+            oid = r["order_id"]
+            customer_id = r["customer_id"] or random.choice(customer_ids)
+            prev_order_ts = r["order_ts"]
+            prev_updated_ts = r["updated_ts"] or prev_order_ts
 
-# Append updates to today's orders payload (like CDC events)
+            cand = datetime.strptime(rand_time_in_day(process_date), "%Y-%m-%d %H:%M:%S")
+            base = max(prev_updated_ts or prev_order_ts, prev_order_ts)
+
+            if cand <= base:
+                cand = base + timedelta(minutes=random.randint(5, 59))
+
+            updated_ts = cand
+            order_ts = prev_order_ts
+
+            status = next_status(r["status"])
+
+            update_rows.append((
+                oid,
+                customer_id,
+                order_ts,
+                status,
+                updated_ts,
+            ))
+
 orders_rows.extend(update_rows)
 
 # -----------------------------
